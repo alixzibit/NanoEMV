@@ -4,12 +4,12 @@ using System.Linq;
 
 namespace NanoEMV
 {
-    public class ProcessingOptions
+    public class ProcessingOptionsMPaypass
     {
         private PCSCReader _cardReader;
         private RecordReader _recordReader;
 
-        public ProcessingOptions(PCSCReader cardReader)
+        public ProcessingOptionsMPaypass(PCSCReader cardReader)
         {
             _cardReader = cardReader ?? throw new ArgumentNullException(nameof(cardReader));
             _recordReader = new RecordReader(_cardReader);
@@ -18,6 +18,11 @@ namespace NanoEMV
         public List<APDUResponse> ReadRecords { get; private set; } = new List<APDUResponse>();
         public byte[] AIP { get; private set; }
         public byte[] AFL { get; private set; }
+        //public string PAN { get; private set; }
+        //public byte[] AC { get; private set; }
+        //public byte[] PANSEQ { get; private set; }
+        //public byte[] IAD { get; private set; }
+        //public byte[] ATC { get; private set; }
 
         public APDUResponse GetProcessingOptions()
         {
@@ -29,7 +34,7 @@ namespace NanoEMV
             logger.WriteLog($"APDU Command prepared: {BitConverter.ToString(apdu.CommandData)}.");
 
             APDUResponse response = _cardReader.Transmit(apdu);
-            logger.WriteLog($"Received APDU Response with SW1: {response.SW1:X2}, SW2: {response.SW2:X2}");
+            logger.WriteLog($"Received APDU Response with SW1 = {response.SW1:X2}, SW2 = {response.SW2:X2}.");
 
             if (response.SW1 == 0x61)
             {
@@ -44,7 +49,7 @@ namespace NanoEMV
                 apdu = new APDUCommand(0x80, 0xA8, 0x00, 0x00, newCommandData, 0x00);
                 response = _cardReader.Transmit(apdu);
                 logger.WriteLog($"Rebuilt APDU Command: {BitConverter.ToString(apdu.CommandData)}.");
-                logger.WriteLog($"Received APDU Response after rebuilding SW1: {response.SW1:X2}, SW2: {response.SW2:X2}");
+                logger.WriteLog($"Received APDU Response after rebuilding: SW1 = {response.SW1:X2}, SW2 = {response.SW2:X2}.");
             }
             else
             {
@@ -71,7 +76,7 @@ namespace NanoEMV
                 afl = new ASN1(0x94, AFL);
 
                 //logger.WriteLog($"AIP: {BitConverter.ToString(AIP)}");
-                logger.WriteLog($"AFL: {BitConverter.ToString(AFL).Replace("-", "")}"); ;
+                logger.WriteLog($"AFL: {BitConverter.ToString(AFL).Replace("-", "")}");
             }
             else if (fullData[0] == 0x77) // Template Format 2
             {
@@ -85,6 +90,32 @@ namespace NanoEMV
 
                 //logger.WriteLog($"AIP: {BitConverter.ToString(AIP)}");
                 logger.WriteLog($"AFL: {BitConverter.ToString(AFL).Replace("-", "")}");
+                //ASN1 applicationCryptogram = template.Find(new byte[] { 0x9F, 0x26 });
+                //if (applicationCryptogram != null)
+                //{
+                //    AC = applicationCryptogram.Value;
+                //    logger.WriteLog($"Application Cryptogram: {BitConverter.ToString(AC)}");
+                //}
+                //ASN1 panseq = template.Find(new byte[] { 0x5F, 0x34 });
+                //if (panseq != null)
+                //{
+                //    PANSEQ = panseq.Value;
+                //    logger.WriteLog($"PAN Sequence: {BitConverter.ToString(PANSEQ)}");
+                //}
+                //ASN1 iad = template.Find(new byte[] { 0x9F, 0x10 });
+                //if (iad != null)
+                //{
+                //    IAD = iad.Value;
+                //    logger.WriteLog($"Issuer Application Data: {BitConverter.ToString(IAD)}");
+                //}
+                //ASN1 atc = template.Find(new byte[] { 0x9F, 0x36 });
+                //if (atc != null)
+                //{
+                //    {
+                //        ATC = atc.Value;
+                //        logger.WriteLog($"Application Transaction Counter: {BitConverter.ToString(ATC)}");
+                //    }
+                //}
             }
             else
             {
@@ -97,7 +128,7 @@ namespace NanoEMV
             {
                 byte[] aflEntry = AFL.Skip(i).Take(4).ToArray();
                 afls.Add(new ApplicationFileLocator(aflEntry));
-                logger.WriteLog($"Added AFL Entry: {BitConverter.ToString(aflEntry).Replace("-", "")}");
+                logger.WriteLog($"Added AFL Entry: {BitConverter.ToString(aflEntry)}");
             }
 
             ReadAFLRecords(afls);

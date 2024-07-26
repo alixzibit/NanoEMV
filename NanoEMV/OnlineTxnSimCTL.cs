@@ -1,5 +1,4 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,7 +6,7 @@ using static NanoEMV.Services.CardReaderService2;
 
 namespace NanoEMV.Services
 {
-    public class OnlineTxnSim
+    public class OnlineTxnSimCTL
     {
         private readonly ICardReaderService2 _cardReaderService;
         private readonly byte[] _masterKey;
@@ -17,12 +16,12 @@ namespace NanoEMV.Services
         private Logger _logger = new Logger();
 
 
-        public OnlineTxnSim(ICardReaderService2 cardReaderService, string masterKeyHex, bool arpcEnabled)
+        public OnlineTxnSimCTL(ICardReaderService2 cardReaderService, string masterKeyHex, bool arpcEnabled)
         {
             _cardReaderService = cardReaderService;
             _masterKey = HexStringToByteArray(masterKeyHex);
             _arpcEnabled = arpcEnabled;
-            _transactionLogs = new List<string>(); 
+            _transactionLogs = new List<string>();
         }
 
 
@@ -31,19 +30,19 @@ namespace NanoEMV.Services
             try
             {
                 _transactionLogs.Clear();
-                _transactionLogs.Add("Starting Contact transaction simulation...");
-                _logger.WriteLog($"============================= Starting Contact transaction simulation =============================");
+                _transactionLogs.Add("Starting Contactless transaction simulation...");
+                _logger.WriteLog("=========================== Starting Contactless transaction simulation ===========================");
+
                 // Step 1: Read all card data
-                _cardData = _cardReaderService.ReadAllCardData(readerName);
+                _cardData = _cardReaderService.ReadCardContactless(readerName);
 
                 _transactionLogs.Add("Card data read successfully.");
 
                 // Step 2: Generate and Authenticate ARQC
                 GenerateAndAuthenticateARQC(_arpcEnabled);
-                _transactionLogs.Add("Contact Transaction Simulated successfully.");
-                _logger.WriteLog($"============================= Contact Transaction Simulated successfully =========================");
+                _transactionLogs.Add("Contactless Transaction Simulated successfully.");
+                _logger.WriteLog("=========================== Contactless Transaction Simulated successfully =========================");
             }
-
             catch (Exception ex)
             {
                 _transactionLogs.Add($"Error: {ex.Message}");
@@ -62,18 +61,15 @@ namespace NanoEMV.Services
                 string pan = _cardData.GetTagValue("5A"); // PAN
                 if (string.IsNullOrEmpty(pan))
                 {
-                    _logger.WriteLog("PAN not found.");
                     throw new Exception("PAN not found.");
-                    
                 }
 
                 string maskedPan = $"{pan.Substring(0, 6)}XXXXXX{pan.Substring(pan.Length - 4)}";
                 _transactionLogs.Add($"PAN: {maskedPan}");
                 _logger.WriteLog($"PAN: {maskedPan}");
 
-
                 // Get PAN Sequence Number
-                string panSequenceNumber = _cardData.GetTagValue("5F34") ?? "02"; // Default sequence number
+                string panSequenceNumber = _cardData.GetTagValue("5F34"); // Default sequence number
                 _transactionLogs.Add($"PAN Sequence Number: {panSequenceNumber}");
                 _logger.WriteLog($"PAN Sequence Number: {panSequenceNumber}");
 
@@ -84,18 +80,15 @@ namespace NanoEMV.Services
                     return; // MChip-specific logic here if needed
                 }
 
-
                 // PROCESS AS VISA-----------------
 
                 // Retrieve AIP
-                _transactionLogs.Add($"Processing as VISA Contact Online Transaction...");
-                _logger.WriteLog($"Processing as VISA Contact Online Transaction...");
-
+                _transactionLogs.Add($"Processing as qVSDC Online Transaction...");
+                _logger.WriteLog($"Processing as qVSDC Online Transaction...");
                 string extractedAip = _cardData.GetTagValue("82");
                 if (string.IsNullOrEmpty(extractedAip))
                 {
-                    _logger.WriteLog($"AIP (Tag 82) not found.");
-                    throw new Exception("AIP (Tag 82) not found.");
+                    throw new Exception("AIP (Tag 82) not found");
                 }
 
                 byte[] aip = HexStringToByteArray(extractedAip);
@@ -106,40 +99,60 @@ namespace NanoEMV.Services
                 _transactionLogs.Add($"Derived UDK: {BitConverter.ToString(udk).Replace("-", "")}");
                 _logger.WriteLog($"Session Key Derivation - Derived UDK: {BitConverter.ToString(udk).Replace("-", "")}");
 
-                // Generate ARQC
-                EMVTransactionSimulator simulator = new EMVTransactionSimulator(_cardReaderService.GetCardReader());
-                byte[] cdol1Data = simulator.ConstructCDOLData();
-                APDUResponse arqcResponse = simulator.GenerateAC(0x80, cdol1Data); // 0x80 indicates ARQC
-                _logger.WriteLog($"Sending Generate AC command");
-                arqcResponse = ProcessResponse(arqcResponse);  // Process the response to handle additional data
-
-                if (arqcResponse.SW1 != 0x90)
+                // Retrieve AC
+                string extractedAC = _cardData.GetTagValue("9F26");
+                if (string.IsNullOrEmpty(extractedAC))
                 {
-                    _logger.WriteLog("Failed to generate ARQC.");
-                    throw new Exception("Failed to generate ARQC.");
+                    throw new Exception("AC (Tag 9F26) not found");
                 }
+                byte[] ac = HexStringToByteArray(extractedAC);
 
-                // Parse the GAC response
-                var (cid, atc, ac, iad) = ParseGACResponse(arqcResponse.Data);
-                _transactionLogs.Add($"CID: {cid}\nATC: {BitConverter.ToString(atc).Replace("-", "")}\nAC: {BitConverter.ToString(ac).Replace("-", "")}");
-                _logger.WriteLog($"Parsed data from Generate AC response - CID: {cid}, ATC: {BitConverter.ToString(atc).Replace("-", "")}, AC: {BitConverter.ToString(ac).Replace("-", "")}");
-                string extractedIAD = BitConverter.ToString(iad).Replace("-", "");
-                _cardData.AddTagValue("9F10", extractedIAD, "Issuer Application Data");
+                // Retrieve ATC
+                string extractedATC = _cardData.GetTagValue("9F36");
+                if (string.IsNullOrEmpty(extractedATC))
+                {
+                    throw new Exception("ATC (Tag 9F36) not found");
+                }
+                byte[] atc = HexStringToByteArray(extractedATC);
+
+                // Retrieve IAD
+                string extractedIAD = _cardData.GetTagValue("9F10");
+                if (string.IsNullOrEmpty(extractedIAD))
+                {
+                    throw new Exception("IAD (Tag 9F10) not found");
+                }
+                byte[] iad = HexStringToByteArray(extractedIAD);
 
                 byte cvn = iad.Length > 0 ? iad[2] : (byte)0x00;
                 _transactionLogs.Add($"Detected CVN (hex): {cvn:X2}");
                 _logger.WriteLog($"Detected CVN (hex): {cvn:X2}");
 
                 byte[] cvr = iad.Skip(3).Take(4).ToArray(); // Adjusting the CVR extraction
+                byte[] cvrAlt = iad.Skip(4).Take(1).ToArray();
 
                 byte[] arqc;
-
+                EMVTransactionSimulatorCTL simulator = new EMVTransactionSimulatorCTL(_cardReaderService.GetCardReader());
+                byte[] cdol1Data = simulator.ConstructCDOLData();
+                byte[] cdolDataAlt = simulator.ConstructCDOLalt();
                 if (cvn == 0x0A)
                 {
                     // CVN 10
                     byte[] transactionData = cdol1Data.Concat(aip).Concat(atc).Concat(cvr).ToArray();
                     _transactionLogs.Add($"Constructed CVN10 Txn Data: {BitConverter.ToString(transactionData).Replace("-", "")}");
                     _logger.WriteLog($"Constructed CVN10 Txn Data: {BitConverter.ToString(transactionData).Replace("-", "")}");
+                    arqc = CalculateApplicationCryptogram(transactionData, udk);
+
+                    if (arpcEnabled)
+                    {
+                        GenerateARPCForVisaCVN10(ac, udk, aip);
+                    }
+                }
+                if (cvn == 0x11)
+                {
+                    //CVN 17
+                    byte[] transactionData = cdolDataAlt.Concat(atc).Concat(cvrAlt).ToArray(); 
+                    _transactionLogs.Add($"Constructed CVN17 Txn Data: {BitConverter.ToString(transactionData).Replace("-", "")}");
+                    _logger.WriteLog($"Constructed CVN17 Txn Data: {BitConverter.ToString(transactionData).Replace("-", "")}");
                     arqc = CalculateApplicationCryptogram(transactionData, udk);
 
                     if (arpcEnabled)
@@ -173,29 +186,30 @@ namespace NanoEMV.Services
                 _logger.WriteLog($"Calculated ARQC: {BitConverter.ToString(arqc).Replace("-", "")}");
                 _logger.WriteLog($"Received ARQC: {BitConverter.ToString(ac).Replace("-", "")}");
 
+
                 if (!ac.SequenceEqual(arqc))
                 {
                     _logger.WriteLog($"ARQC verification failed.");
 
-                  throw new Exception("ARQC verification failed.");
+                    throw new Exception("ARQC verification failed.");
                 }
                 else
                 {
-                    _transactionLogs.Add($"ARQC verification succeeded.");
                     _logger.WriteLog($"ARQC verification succeeded.");
+                    _transactionLogs.Add("ARQC verification succeeded.");
                 }
 
-                _transactionLogs.Add($"Transaction Simulation succeeded.");
+                _transactionLogs.Add("Transaction Simulation succeeded.");
                 _logger.WriteLog($"Transaction Simulation succeeded.");
-
             }
             catch (Exception ex)
             {
-                _transactionLogs.Add($"Error during transaction simulation: {ex.Message}");
                 _logger.WriteLog($"Error during transaction simulation: {ex.Message}");
+                _transactionLogs.Add($"Error during transaction simulation: {ex.Message}");
                 throw;
             }
         }
+
 
 
         private void GenerateARPCForVisaCVN18(byte[] ac, byte[] skac, byte[] aip)
@@ -239,7 +253,7 @@ namespace NanoEMV.Services
             byte[] arpc = GenerateARPC(ac, arc, udk);
             EMVTransactionSimulator simulator = new EMVTransactionSimulator(_cardReaderService.GetCardReader());
             byte[] cdol1Data = simulator.ConstructCDOLData();
-            
+
             byte[] cdol2Data = simulator.ConstructCDOL2Data(arpc, arc);
             APDUResponse tcResponse = simulator.GenerateAC(0x40, cdol2Data); // 0x40 indicates TC
             tcResponse = ProcessResponse(tcResponse); // Process the response to handle additional data
@@ -273,7 +287,7 @@ namespace NanoEMV.Services
         // PROCESS AS MCHIP-----------------
         private void GenAuthARQCMchip(string pan, string panSequenceNumber, bool arpcEnabled)
         {
-            _transactionLogs.Add($"Processing as MCHIP Contact Online Transaction...");
+            _transactionLogs.Add($"Processing as MCHIP PayPass Online Transaction...");
             _logger.WriteLog($"Processing as MCHIP Contact Online Transaction...");
             try
             {
@@ -305,13 +319,12 @@ namespace NanoEMV.Services
                     if (arqcResponse.SW1 != 0x90)
                     {
                         _transactionLogs.Add("Failed to generate ARQC.");
-                        _logger.WriteLog("Failed to generate ARQC.");
                         throw new InvalidOperationException("Failed to generate ARQC.");
                     }
 
                     // Parse the GAC response
                     var (cid, atc, ac, iad) = ParseGACResponseFormat2(arqcResponse.Data);
-                    _transactionLogs.Add($"ATC: {BitConverter.ToString(atc).Replace("-", "")}\nAC: {BitConverter.ToString(ac).Replace("-", "")}\n");
+                    _transactionLogs.Add($"CID: {cid}\nATC: {BitConverter.ToString(atc).Replace("-", "")}\nAC: {BitConverter.ToString(ac).Replace("-", "")}\n");
                     _logger.WriteLog($"Parsed data from Generate AC response - ATC: {BitConverter.ToString(atc).Replace("-", "")}  AC: {BitConverter.ToString(ac).Replace("-", "")}");
                     string extractedIAD = BitConverter.ToString(iad).Replace("-", "");
                     _cardData.AddTagValue("9F10", extractedIAD, "Issuer Application Data");
@@ -330,7 +343,7 @@ namespace NanoEMV.Services
                     }
                     byte[] trimmedCdol1Data = cdol1Data.Take(cdol1DataLengthToKeep).ToArray();
 
-                    // Concatenate CDOL1 Data, AIP, ATC, and CVR for ARQC verification  
+                    // Concatenate CDOL1 Data, AIP, ATC, and CVR for ARQC verification
                     byte[] aip = HexStringToByteArray(_cardData.GetTagValue("82")); // AIP from extracted tag values
                     byte[] un = HexStringToByteArray("01020304");
                     byte[] transactionData = trimmedCdol1Data.Concat(aip).Concat(atc).Concat(cvr).ToArray();
@@ -345,7 +358,6 @@ namespace NanoEMV.Services
                     _transactionLogs.Add($"Calculated ARQC: {BitConverter.ToString(arqc).Replace("-", "")}\nReceived ARQC: {BitConverter.ToString(ac).Replace("-", "")}\n");
                     _logger.WriteLog($"Calculated ARQC: {BitConverter.ToString(arqc).Replace("-", "")}");
                     _logger.WriteLog($"Received ARQC: {BitConverter.ToString(ac).Replace("-", "")}");
-
                     // Verify ARQC
                     if (!ac.SequenceEqual(arqc))
                     {
@@ -391,7 +403,7 @@ namespace NanoEMV.Services
 
                 byte[] arc = new byte[] { 0x00, 0x12 }; // Example ARC
                 byte[] arpc = GenerateARPCMchip(ac, arc, udk);
-                
+
 
                 EMVTransactionSimulator simulator = new EMVTransactionSimulator(_cardReaderService.GetCardReader());
 
@@ -407,7 +419,7 @@ namespace NanoEMV.Services
 
                 // Parse the GAC response
                 var (tcCid, tcAtc, tcAc, tcIad) = ParseGACResponseFormat2(tcResponse.Data);
-                _transactionLogs.Add($"ATC: {BitConverter.ToString(tcAtc).Replace("-", "")}\nAC: {BitConverter.ToString(tcAc).Replace("-", "")}\n");
+                _transactionLogs.Add($"CID: {tcCid}\nATC: {BitConverter.ToString(tcAtc).Replace("-", "")}\nAC: {BitConverter.ToString(tcAc).Replace("-", "")}");
 
                 // Extract the last 6 bytes of IAD as CVR
                 byte[] cvr = tcIad.Skip(2).Take(6).ToArray(); // Adjusting the CVR extraction
@@ -419,18 +431,15 @@ namespace NanoEMV.Services
                 // Verify TC
                 if (!VerifyApplicationCryptogramMC(tcAc, transactionData, skac))
                 {
-                    _logger.WriteLog("ARPC verification failed.");
                     throw new Exception("ARPC verification failed.");
                 }
                 else
                 {
-                    _logger.WriteLog("ARPC verification succeeded.");
                     _transactionLogs.Add("ARPC verification succeeded.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.WriteLog($"Error during ARPC generation: {ex.Message}");
                 _transactionLogs.Add($"Error during ARPC generation: {ex.Message}");
                 throw;
             }
@@ -782,6 +791,7 @@ namespace NanoEMV.Services
 
         private byte[] CalculateApplicationCryptogram(byte[] transactionData, byte[] udk)
         {
+            Debug.WriteLine($"Txn Data: {BitConverter.ToString(transactionData).Replace("-", "")}");
             byte[] keyA = udk.Take(8).ToArray();
             byte[] keyB = udk.Skip(8).Take(8).ToArray();
             byte[] iv = new byte[8];

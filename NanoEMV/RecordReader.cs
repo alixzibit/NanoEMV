@@ -21,7 +21,7 @@ namespace NanoEMV
         //        writer.WriteLine($"{DateTime.Now:G}: {message}");
         //    }
         //}
-        // For simplicity, this example assumes reading of record numbers from 1 to the maximum possible (SFI up to 30 and record up to 16).
+        // For simplicity, this example assumes reading of record numbers from 1 to the maximum possible (SFI up to 5 and record up to 8).
         // You might want to adjust this based on the AID or other transaction specifics.
        
         public List<APDUResponse> ReadAllRecords()
@@ -29,9 +29,9 @@ namespace NanoEMV
             List<APDUResponse> responses = new List<APDUResponse>();
             var logger = new Logger();
 
-            for (byte sfi = 1; sfi <= 8; sfi++)
+            for (byte sfi = 1; sfi <= 5; sfi++)
             {
-                for (byte record = 1; record <= 14; record++)
+                for (byte record = 1; record <= 8; record++)
                 {
                     APDUResponse response = ReadRecord(sfi, record);
 
@@ -68,7 +68,7 @@ namespace NanoEMV
             // Check for 0x6C status word
             if (response.SW1 == 0x6C)
             {
-               logger.WriteLog($"Received 0x6C status. Adjusting Le and reissuing command - 00 B2 {record} {p2} {response.SW2}.");
+               logger.WriteLog($"Received 0x6C status. Adjusting Le and reissuing command - 00 B2 {record} {p2} {response.SW2:X2}.");
                 apdu = new APDUCommand(0x00, 0xB2, record, p2, null, response.SW2); // adjust Le with SW2
                 response = _cardReader.Transmit(apdu);
             }

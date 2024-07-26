@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -21,7 +22,7 @@ namespace NanoEMV
             string logDirectory = Path.Combine(appRoot, "NanoEMV_log");
             Directory.CreateDirectory(logDirectory);  // Ensure the directory exists
 
-            logPath = Path.Combine(logDirectory, "NanoEMV_log");
+            logPath = Path.Combine(logDirectory, "NanoEMV_log.log");
         }
 
         public void WriteLog(string message)
@@ -34,7 +35,7 @@ namespace NanoEMV
             {
                 // Handle any exceptions that might occur during writing
                 // For now, let's just print them out.
-                Console.WriteLine($"Failed to write log: {ex.Message}");
+                Debug.WriteLine($"Failed to write log: {ex.Message}");
             }
         }
     }
