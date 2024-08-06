@@ -341,7 +341,8 @@ namespace NanoEMV.Services
                 byte[] pse = Encoding.ASCII.GetBytes("2PAY.SYS.DDF01");
                 _logger.WriteLog($"Sending APDU command to select the PSE: {BitConverter.ToString(pse)}");
 
-                APDUCommand apdu = new APDUCommand(0x00, 0xA4, 0x04, 0x00, pse, (byte)pse.Length);
+                //APDUCommand apdu = new APDUCommand(0x00, 0xA4, 0x04, 0x00, pse, (byte)pse.Length);
+                APDUCommand apdu = new APDUCommand(0x00, 0xA4, 0x04, 0x00, pse, 0x00);
                 APDUResponse response = _cardReader.Transmit(apdu);
                 _logger.WriteLog($"Received response: SW1: {response.SW1:X2}, SW2: {response.SW2:X2}");
 
@@ -381,25 +382,25 @@ namespace NanoEMV.Services
                         throw new InvalidOperationException("Failed to select a known AID.");
                     }
 
-                    ApplicationSelection appSelection = new ApplicationSelection(_cardReader);
-                    response = appSelection.SelectApplication(aidSelectionResult.AID);
+                    //ApplicationSelection appSelection = new ApplicationSelection(_cardReader);
+                    //response = appSelection.SelectApplication(aidSelectionResult.AID);
 
-                    if (response.SW1 == 0x90 && response.Data != null && response.Data.Length > 0)
-                    {
-                        ASN1 asn1Response = new ASN1(response.Data);
-                        AddRecordNodes(asn1Response, rootNodeCollection, cardData);
-                    }
-                    else
-                    {
-                        AddResponseNodes(response, rootNodeCollection);
-                    }
+                    //if (response.SW1 == 0x90 && response.Data != null && response.Data.Length > 0)
+                    //{
+                    //    ASN1 asn1Response = new ASN1(response.Data);
+                    //    AddRecordNodes(asn1Response, rootNodeCollection, cardData);
+                    //}
+                    //else
+                    //{
+                    //    AddResponseNodes(response, rootNodeCollection);
+                    //}
 
-                    _logger.WriteLog($"Application Selection response: SW1: {response.SW1:X2}, SW2: {response.SW2:X2}");
+                    //_logger.WriteLog($"Application Selection response: SW1: {response.SW1:X2}, SW2: {response.SW2:X2}");
 
-                    if (!appSelection.IsSelectionSuccessful(response))
-                    {
-                        throw new InvalidOperationException("Failed to select the application by AID.");
-                    }
+                    //if (!appSelection.IsSelectionSuccessful(response))
+                    //{
+                    //    throw new InvalidOperationException("Failed to select the application by AID.");
+                    //}
                 }
 
                 ProcessingOptionsQVSDC processingOptions = new ProcessingOptionsQVSDC(_cardReader);

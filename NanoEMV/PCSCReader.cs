@@ -287,6 +287,67 @@ namespace NanoEMV
             return new APDUResponse(response);
         }
 
+        public APDUResponse Transmit(APDUCommand2 apdu)
+        {
+            byte[] recvBuffer = new byte[256];
+            int recvLength = recvBuffer.Length;
+            IntPtr sendPci = IntPtr.Zero;
+
+            switch ((WinSCard.Protocol)activeProtocol)
+            {
+                case WinSCard.Protocol.SCARD_PROTOCOL_T0:
+                    sendPci = WinSCard.SCARD_PCI_T0;
+                    break;
+                case WinSCard.Protocol.SCARD_PROTOCOL_T1:
+                    sendPci = WinSCard.SCARD_PCI_T1;
+                    break;
+            }
+
+            #region Debug output
+#if DEBUG
+            if (outputDebugString)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                foreach (byte b in apdu.ToArray())
+                {
+                    sb.AppendFormat("{0:X2}", b);
+                }
+
+                Debug.WriteLine(sb.ToString());
+            }
+#endif
+            #endregion
+
+            int result = WinSCard.SCardTransmit(card, sendPci, apdu.ToArray(), apdu.ToArray().Length, IntPtr.Zero, recvBuffer, ref recvLength);
+
+            if (result != WinSCard.SCARD_S_SUCCESS)
+            {
+                throw new PCSCException(result);
+            }
+
+            #region Debug output
+#if DEBUG
+            if (outputDebugString)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                for (int i = 0; i < recvLength; i++)
+                {
+                    sb.AppendFormat("{0:X2}", recvBuffer[i]);
+                }
+
+                Debug.WriteLine(sb.ToString());
+            }
+#endif
+            #endregion
+
+            byte[] response = new byte[recvLength];
+            Buffer.BlockCopy(recvBuffer, 0, response, 0, recvLength);
+
+            return new APDUResponse(response);
+        }
+
         private void WaitChangeStatus(object sender, DoWorkEventArgs e)
         {
             while (!e.Cancel)
